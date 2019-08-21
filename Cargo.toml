@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 redis = "0.11.0"
-tokio = "0.1.22"
+tokio = "0.2.0-alpha.2"
 foundationdb = "0.3.0"
 eetf = "0.4"
 
