@@ -4,9 +4,7 @@ extern crate eetf;
 extern crate redis;
 extern crate tokio;
 
-
-#[allow(unused_imports)]
-use eetf::{Atom, Map, Term};
+use eetf::Term;
 use redis::Commands;
 use std::error::Error;
 use std::io::Cursor;
