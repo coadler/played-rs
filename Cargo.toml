@@ -9,7 +9,8 @@ edition = "2018"
 [dependencies]
 redis = "0.11.0"
 tokio = "0.2.0-alpha.2"
-foundationdb = "0.3.0"
+foundationdb = "*"
+futures = "0.1.28"
 eetf = "0.4"
 num = "0.2"
 

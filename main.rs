@@ -1,12 +1,17 @@
 extern crate eetf;
+extern crate foundationdb;
+extern crate futures;
 extern crate num;
 extern crate redis;
 extern crate tokio;
 
 use eetf::{Map, Term};
+use foundationdb::*;
+use futures::future::*;
 use num::ToPrimitive;
 use redis::Commands;
 use std::io::Cursor;
+use std::sync::Arc;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -17,11 +22,27 @@ struct PlayedMessage {
 
 #[allow(unused_variables)]
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async unsafe fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rc = redis::Client::open("redis://127.0.0.1:6380")?;
     let mut conn = rc.get_connection()?;
 
+    let network = foundationdb::init().expect("failed to init fdb network");
+    tokio::spawn(async move {
+        if let Err(error) = network.run() {
+            panic!("failed to run network {}", error)
+        }
+    });
+
+    network.wait();
+
+    let db = Cluster::new(foundationdb::default_config_path())
+        .and_then(|cluster| cluster.create_database())
+        .wait()
+        .expect("failed to create cluster");
+    let adb = Arc::new(db);
+
     loop {
+        let cdb = adb.clone();
         let cmd: (String, Vec<u8>) = conn.blpop("gateway:events:PRESENCE_UPDATE", 0)?;
         let (_, mut raw) = cmd;
 
@@ -58,6 +79,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+
+            cdb.transact(|txn| -> Result<(), Error> {
+                let res = txn.get(&[0], true).wait();
+                Ok(())
+            });
 
             dbg!(&pl);
         });

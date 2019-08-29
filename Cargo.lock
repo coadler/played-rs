@@ -701,6 +701,7 @@ version = "0.1.0"
 dependencies = [
  "eetf 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "foundationdb 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "redis 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
