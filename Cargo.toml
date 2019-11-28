@@ -1,19 +1,24 @@
 [package]
 name = "played-rs"
 version = "0.1.0"
-authors = ["Colin Adler <cadler@coder.com>"]
+authors = ["Colin Adler <colin@coder.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 redis = "0.11.0"
-tokio = "0.2.0-alpha.2"
-foundationdb = "*"
-futures = "0.1.28"
+tokio = "0.2.0-alpha.6"
+foundationdb = { git = "https://github.com/bluejekyll/foundationdb-rs" }
+futures = "0.3.1"
 eetf = "0.4"
 num = "0.2"
+serde = { version = "1.0.102", features = ["derive"] }
+serde_eetf = "0.2.0"
+serde_repr = "0.1.5"
+bitflags = "1.2.1"
+ws = "*"
 
 [[bin]]
 name = "played-rs"
-path = "main.rs"
+path = "src/main.rs"
