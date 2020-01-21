@@ -91,6 +91,9 @@ pub struct Presence {
     pub user: User,
 }
 
+unsafe impl Send for Presence {}
+unsafe impl Sync for Presence {}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize)]
 pub enum OnlineStatus {
     #[serde(rename = "Dnd")]
