@@ -19,6 +19,9 @@ pub struct Activity {
     pub url: Option<String>,
 }
 
+unsafe impl Send for Activity {}
+unsafe impl Sync for Activity {}
+
 #[derive(
     Copy, Clone, Default, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize,
 )]
@@ -43,6 +46,9 @@ bitflags! {
         const PLAY = 0b110;
     }
 }
+
+unsafe impl Send for ActivityFlags {}
+unsafe impl Sync for ActivityFlags {}
 
 impl<'de> Deserialize<'de> for ActivityFlags {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
