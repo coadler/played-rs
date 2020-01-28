@@ -9,45 +9,53 @@ use foundationdb::*;
 use futures::future::*;
 use played::Presence;
 use std::error::Error;
+use std::ptr;
 use std::sync::Arc;
 
+const global_fdb: *const Database = ptr::null();
+const global_rdb: *const i32 = ptr::null();
+
 #[allow(dead_code)]
-#[allow(unused_mut)]
-#[allow(unused_variables)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let network = foundationdb::boot().expect("failed to init boot network");
-    let db = Arc::new(foundationdb::Database::default().expect("failed to open fdb"));
+    unsafe {
+        foundationdb::boot().expect("failed to init boot network");
+        let db = foundationdb::Database::default().expect("failed to open fdb");
+        *global_fdb = db;
 
-    ws::listen("127.0.0.1:8080", |out| handler(Arc::clone(&db))).expect("failed to handle ws");
+        ws::listen("127.0.0.1:8080", |out| handler()).expect("failed to handle ws");
+    }
     Ok(())
 }
 
-fn handler(db: Arc<foundationdb::Database>) -> Box<dyn Fn(ws::Message) -> ws::Result<()>> {
+fn handler() -> Box<dyn Fn(ws::Message) -> ws::Result<()>> {
     Box::new(move |msg: ws::Message| -> ws::Result<()> {
         let mut data: Vec<u8> = vec![131];
         data.append(msg.into_data().as_mut());
         let res: Presence = serde_eetf::from_bytes(&data).unwrap();
         dbg!(&res);
 
-        tokio::spawn(process(Arc::clone(&db), res));
+        unsafe {
+            tokio::spawn(process(res));
+        }
         Ok(())
     })
 }
 
-async fn process(db: Arc<Database>, pres: Presence) {
-    db.transact_boxed(
-        pres,
-        |txn: &Transaction, pres| exec(txn, pres).boxed(),
-        TransactOption::default(),
-    )
-    .await
-    .unwrap();
+async fn process(pres: Presence) {
+    unsafe {
+        ptr::read(global_fdb.as_ref().unwrap())
+            .transact_boxed(
+                pres,
+                |txn: &Transaction, pres| exec(txn, pres).boxed(),
+                TransactOption::default(),
+            )
+            .await
+            .unwrap();
+    }
 }
 
 async fn exec(txn: &foundationdb::Transaction, pres: &Presence) -> FdbResult<()> {
-    tuple::Subspace::from("test");
-
     let now = Utc::now().timestamp() as u64;
     let mut now_raw = [0; 4];
     LittleEndian::write_u64(&mut now_raw, now);
