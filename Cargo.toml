@@ -21,6 +21,7 @@ ws = "*"
 winapi = "0.3.8"
 chrono = "*"
 byteorder = "*"
+tokio-tungstenite = "*"
 
 [[bin]]
 name = "played-rs"
