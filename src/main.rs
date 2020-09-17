@@ -1,138 +1,268 @@
-#![feature(async_closure)]
-pub mod played;
-#[macro_use]
-extern crate bitflags;
-
 use byteorder::{ByteOrder, LittleEndian};
-use chrono::Utc;
+use chrono::{DateTime, TimeZone, Utc};
+use foundationdb::tuple::TupleUnpack;
 use foundationdb::*;
-use futures::future::*;
-use futures::{stream::TryStreamExt, StreamExt};
-use played::Presence;
-use std::cell::UnsafeCell;
+use futures::FutureExt;
+use std::convert::TryInto;
 use std::env;
-use std::error::Error;
-use tokio::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use tokio::stream::StreamExt;
+
+use anyhow::Result;
+use serde_mappable_seq::Key;
+use twilight_gateway::{
+    cluster::{Cluster, ShardScheme},
+    Event,
+};
+use twilight_model::gateway::{payload::PresenceUpdate, Intents};
 
 struct Server {
-    fdb: UnsafeCell<Database>,
+    fdb: Database,
+    count: AtomicU64,
 }
 
-unsafe impl Sync for Server {}
-unsafe impl Send for Server {}
-
-#[allow(dead_code)]
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    foundationdb::boot().expect("failed to init boot network");
-    let db: Database = foundationdb::Database::default().expect("failed to open fdb");
+async fn main() -> Result<()> {
+    let net = std::thread::spawn(|| {
+        foundationdb::boot(|| {
+            std::thread::park();
+        });
+    });
 
-    let p: *const Server = &Server {
-        fdb: UnsafeCell::new(db),
-    };
+    tokio::time::delay_for(Duration::from_millis(500)).await;
 
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let try_socket = TcpListener::bind(&addr).await;
-    let mut listener = try_socket.expect("Failed to bind");
-    println!("Listening on: {}", addr);
+    let db: Database = foundationdb::Database::default().expect("open fdb");
 
-    while let Ok((stream, _)) = listener.accept().await {
-        unsafe {
-            tokio::spawn((*p).accept(stream));
+    let s: &'static Server = Box::leak(Box::new(Server {
+        fdb: db,
+        count: AtomicU64::new(0),
+    }));
+
+    let scheme = ShardScheme::Auto;
+
+    let cluster = Cluster::builder(token)
+        .shard_scheme(scheme)
+        .intents(Intents::GUILD_PRESENCES)
+        .build()
+        .await?;
+
+    let cluster_spawn = cluster.clone();
+    tokio::spawn(async move {
+        cluster_spawn.up().await;
+    });
+
+    let cluster_end = cluster.clone();
+    ctrlc::set_handler(move || {
+        println!("closing");
+        cluster_end.down();
+    })
+    .expect("set close handler");
+
+    tokio::spawn(async move {
+        tick(&*s).await;
+    });
+
+    let mut events = cluster.events();
+
+    while let Some((shard, event)) = events.next().await {
+        let s = &*s;
+        match event {
+            Event::PresenceUpdate(p) => {
+                tokio::spawn(async move {
+                    s.count.fetch_add(1, Ordering::Relaxed);
+                    s.process(*p).await.map_err(|e| println!("fuck {}", e)).ok();
+                });
+            }
+            Event::ShardIdentifying(_) => {
+                println!("shard {} identifying", shard);
+            }
+            Event::ShardConnecting(_) => {
+                println!("shard {} connecting", shard);
+            }
+            Event::ShardConnected(_) => {
+                println!("shard {} connected", shard);
+            }
+            Event::ShardDisconnected(_) => {
+                println!("shard {} disconnected", shard);
+            }
+            Event::ShardResuming(_) => {
+                println!("shard {} resuming", shard);
+            }
+            Event::Resumed => {
+                println!("shard {} resumed", shard);
+            }
+            Event::Ready(r) => {
+                println!("shard {} ready, {} guilds", shard, r.guilds.len());
+            }
+            _ => {}
         }
     }
 
+    net.thread().unpark();
+    net.join().ok();
     Ok(())
 }
 
 impl Server {
-    async unsafe fn process(&self, pres: Presence) {
-        let db: *const Database = self.fdb.get();
-        (*db)
-            .transact_boxed(
-                pres,
-                |txn: &Transaction, pres| exec(txn, pres).boxed(),
-                TransactOption::default(),
-            )
-            .await
-            .unwrap()
-    }
+    async fn process(&self, p: PresenceUpdate) -> Result<()> {
+        self.fdb
+            .transact_boxed(p, |tx, p| exec(tx, p).boxed(), TransactOption::default())
+            .await?;
 
-    async unsafe fn accept(&self, stream: TcpStream) {
-        let mut buf: Vec<u8> = vec![];
-        let ws_stream = tokio_tungstenite::accept_async(stream)
-            .await
-            .expect("Error during the websocket handshake occurred");
-
-        ws_stream
-            .try_for_each(|msg| {
-                buf.truncate(0);
-                buf.push(131);
-                buf.append(msg.into_data().as_mut());
-                let res: Presence = serde_eetf::from_bytes(&buf).unwrap();
-                tokio::spawn(self.process(res));
-                ok(())
-            })
-            .await
-            .unwrap();
+        Ok(())
     }
 }
 
-async fn exec(txn: &foundationdb::Transaction, pres: &Presence) -> FdbResult<()> {
-    let now = Utc::now().timestamp() as u64;
-    let mut now_raw = [0; 4];
-    LittleEndian::write_u64(&mut now_raw, now);
+async fn exec(t: &foundationdb::Transaction, pres: &PresenceUpdate) -> FdbResult<()> {
+    let time_now = Utc::now();
+    let mut now = [0; 8];
+    LittleEndian::write_u64(&mut now, time_now.timestamp() as u64);
+
+    let usr = pres.user.key().to_string();
+    let usr = usr.as_bytes();
+    let game = pres.game.as_ref().map(|a| a.name.as_bytes()).unwrap_or(b"");
+
+    let first_key = fmt_first_seen_key(usr);
+    let last_key = fmt_last_updated_key(usr);
+    let cur_key = fmt_current_game_key(usr);
+
+    let first = t.get(&first_key, false).await?;
+    if first.is_none() {
+        t.set(&first_key, &now);
+    }
+
+    let cur = t.get(&cur_key, false).await?;
+    if cur.is_none() {
+        t.set(&cur_key, game);
+        t.set(&last_key, &now);
+        return Ok(());
+    }
+
+    let cur = &*cur.unwrap();
+    if cur == game {
+        return Ok(());
+    }
+
+    let last_changed = t
+        .get(&last_key, false)
+        .await?
+        .as_ref()
+        .map(|v| {
+            let secs = LittleEndian::read_u64(&*v);
+            Utc.timestamp(secs.try_into().unwrap(), 0)
+        })
+        .unwrap_or(time_now);
+
+    t.set(&last_key, &now);
+    t.set(&cur_key, game);
+
+    if cur.is_empty() {
+        return Ok(());
+    }
+
+    let mut to_add = [0; 8];
+    LittleEndian::write_u64(
+        &mut to_add,
+        time_now.signed_duration_since(last_changed).num_seconds() as u64,
+    );
+
+    t.atomic_op(
+        &fmt_user_game(usr, cur),
+        &to_add,
+        options::MutationType::Add,
+    );
 
     Ok(())
 }
 
-// HACK
-// since we don't have FDB directory support this is the hardcoded dir prefix in prod
-static SUBSPACE_PREFIX: [u8; 2] = [0x15, 0x34];
+pub struct Response {
+    pub first_seen: DateTime<Utc>,
+    pub last_updated: DateTime<Utc>,
+    pub games: Vec<Entry>,
+}
 
-#[allow(dead_code)]
-fn fmt_first_seen_key(user: &String) -> Vec<u8> {
-    tuple::Subspace::from_bytes(&SUBSPACE_PREFIX)
-        .subspace(&String::from("first-seen"))
-        .pack(user)
+pub struct Entry {
+    pub name: String,
+    pub dur: u32,
+}
+
+async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> FdbResult<()> {
+    let vals: Vec<Entry> = t
+        .get_range(&fmt_user_range(user.as_ref()), 1, true)
+        .await?
+        .into_iter()
+        .map(|v| {
+            // asdf
+            let (_, _, user, game): (Vec<u8>, u16, String, String) =
+                tuple::unpack(v.key()).unwrap();
+            Entry {
+                name: "asdf".to_string(),
+                dur: 0,
+            }
+        })
+        .collect();
+
+    Ok(())
+}
+
+async fn tick(p: &Server) -> ! {
+    let mut interval = tokio::time::interval(Duration::from_secs(60));
+    loop {
+        interval.tick().await;
+
+        let c = p.count.swap(0, Ordering::Relaxed);
+        println!("{} events", c);
+    }
+}
+
+const SUBSPACE_PREFIX: &[u8] = b"played";
+
+enum Subspace {
+    FirstSeen = 1,
+    LastUpdated = 2,
+    Current = 3,
+    UserGame = 4,
+}
+
+fn fmt_first_seen_key(user: &[u8]) -> Vec<u8> {
+    tuple::Subspace::all()
+        .subspace(&SUBSPACE_PREFIX)
+        .subspace(&(Subspace::FirstSeen as u16))
+        .pack(&user)
+}
+
+fn fmt_last_updated_key(user: &[u8]) -> Vec<u8> {
+    tuple::Subspace::all()
+        .subspace(&SUBSPACE_PREFIX)
+        .subspace(&(Subspace::LastUpdated as u16))
+        .pack(&user)
+}
+
+fn fmt_current_game_key(user: &[u8]) -> Vec<u8> {
+    tuple::Subspace::all()
+        .subspace(&SUBSPACE_PREFIX)
+        .subspace(&(Subspace::Current as u16))
+        .pack(&user)
+}
+
+fn fmt_user_game(user: &[u8], game: &[u8]) -> Vec<u8> {
+    tuple::Subspace::all()
+        .subspace(&SUBSPACE_PREFIX)
+        .subspace(&(Subspace::UserGame as u16))
+        .pack(&(user, game))
 }
 
 #[allow(dead_code)]
-fn fmt_last_updated_key(user: &String) -> Vec<u8> {
-    tuple::Subspace::from_bytes(&SUBSPACE_PREFIX)
-        .subspace(&String::from("last_updated"))
-        .pack(user)
-}
-
-#[allow(dead_code)]
-fn fmt_current_game_key(user: &String) -> Vec<u8> {
-    tuple::Subspace::from_bytes(&SUBSPACE_PREFIX)
-        .subspace(&String::from("current"))
-        .pack(user)
-}
-
-#[allow(dead_code)]
-fn fmt_played_user_game(user: &String, game: &String) -> Vec<u8> {
-    tuple::Subspace::from_bytes(&SUBSPACE_PREFIX)
-        .subspace(&String::from("played"))
-        .subspace(user)
-        .pack(game)
-}
-
-#[allow(dead_code)]
-fn fmt_played_user_range(user: &String) -> RangeOption {
+fn fmt_user_range<'a>(user: &[u8]) -> RangeOption<'a> {
     RangeOption::from(
-        tuple::Subspace::from_bytes(&SUBSPACE_PREFIX)
-            .subspace(&String::from("played"))
-            .subspace(user)
+        tuple::Subspace::all()
+            .subspace(&SUBSPACE_PREFIX)
+            .subspace(&(Subspace::UserGame as u16))
+            .subspace(&user)
             .range(),
     )
-}
-
-#[allow(dead_code)]
-fn fmt_whitelist_key(user: &String) -> String {
-    format!("played:whitelist:{}", user)
 }
