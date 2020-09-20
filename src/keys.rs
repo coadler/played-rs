@@ -31,6 +31,8 @@ pub(crate) fn fmt_current_game_key(user: &[u8]) -> Vec<u8> {
         .pack(&user)
 }
 
+pub(crate) type UserGameKey = (Vec<u8>, u16, Vec<u8>, Vec<u8>);
+
 pub(crate) fn fmt_user_game(user: &[u8], game: &[u8]) -> Vec<u8> {
     tuple::Subspace::all()
         .subspace(&SUBSPACE_PREFIX)

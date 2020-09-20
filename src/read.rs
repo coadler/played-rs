@@ -4,7 +4,7 @@ use crate::Runner;
 use anyhow::Result;
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::{DateTime, TimeZone, Utc};
-use foundationdb::{tuple, FdbResult, TransactOption};
+use foundationdb::{future::FdbValue, tuple, FdbResult, TransactOption};
 use futures::prelude::*;
 
 #[derive(Debug)]
@@ -17,6 +17,7 @@ pub struct Response {
 #[derive(Debug)]
 pub struct Entry {
     pub name: String,
+    /// seconds.
     pub dur: u32,
 }
 
@@ -33,18 +34,14 @@ impl Runner {
     }
 }
 
+#[inline]
 async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> FdbResult<Response> {
+    &dbg!(&fmt_user_range(user.as_ref()));
     let games: Vec<Entry> = t
         .get_range(&fmt_user_range(user.as_ref()), 1, true)
         .await?
         .into_iter()
-        .map(|v| {
-            let (_, _, _, game): (Vec<u8>, u16, Vec<u8>, Vec<u8>) = tuple::unpack(v.key()).unwrap();
-            Entry {
-                name: String::from_utf8_lossy(&game).to_string(),
-                dur: LittleEndian::read_u64(v.value()) as u32,
-            }
-        })
+        .map(|v| v.into())
         .collect();
 
     let first_seen = t
@@ -64,4 +61,14 @@ async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> Fd
         last_updated,
         games,
     })
+}
+
+impl From<FdbValue> for Entry {
+    fn from(v: FdbValue) -> Self {
+        let (_, _, _, game): UserGameKey = tuple::unpack(v.key()).unwrap();
+        Entry {
+            name: String::from_utf8_lossy(&game).to_string(),
+            dur: LittleEndian::read_u64(v.value()) as u32,
+        }
+    }
 }

@@ -2,7 +2,6 @@ use played_rs::Runner;
 
 use foundationdb::api::FdbApiBuilder;
 use foundationdb::Database;
-use std::env;
 
 use anyhow::Result;
 
@@ -20,9 +19,8 @@ async fn main() -> Result<()> {
     // Wait for the foundationDB network thread to start
     let fdb_network = cond.wait();
 
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let db: Database = foundationdb::Database::default().expect("open fdb");
-    let srv = Runner::new(db, token);
+    let srv = Runner::new(db, "");
 
     let res = srv.read("105484726235607040").await;
     dbg!(&res);
