@@ -23,8 +23,8 @@ serde-mappable-seq = "0.1"
 
 [[bin]]
 name = "played-rs"
-path = "src/main.rs"
+path = "src/bin/main.rs"
 
 [[bin]]
 name = "read-data"
-path = "src/read.rs"
+path = "src/bin/read.rs"

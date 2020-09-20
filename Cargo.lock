@@ -97,9 +97,9 @@ checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
 
 [[package]]
 name = "bindgen"
-version = "0.54.0"
+version = "0.55.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66c0bb6167449588ff70803f4127f0684f9063097eca5016f37eb52b92c2cf36"
+checksum = "75b13ce559e6433d360c26305643803cb52cfbabbc2b9c47ce04a58493dfb443"
 dependencies = [
  "bitflags",
  "cexpr",
@@ -186,9 +186,9 @@ dependencies = [
 
 [[package]]
 name = "clang-sys"
-version = "0.29.3"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe6837df1d5cba2397b835c8530f51723267e16abbf83892e9e5af4f0e5dd10a"
+checksum = "9da1484c6a890e374ca5086062d4847e0a2c1e5eba9afa5d48c09e8eb39b2519"
 dependencies = [
  "glob",
  "libc",
@@ -334,7 +334,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 [[package]]
 name = "foundationdb"
 version = "0.5.0"
-source = "git+https://github.com/Clikengo/foundationdb-rs#add16c5f76a55fdd0d0c15753e58b5e4030b4bfb"
+source = "git+https://github.com/Clikengo/foundationdb-rs?branch=master#af3908b3f7d196739a5eae5f837fdb3ba132de54"
 dependencies = [
  "foundationdb-gen",
  "foundationdb-sys",
@@ -348,7 +348,7 @@ dependencies = [
 [[package]]
 name = "foundationdb-gen"
 version = "0.5.0"
-source = "git+https://github.com/Clikengo/foundationdb-rs#add16c5f76a55fdd0d0c15753e58b5e4030b4bfb"
+source = "git+https://github.com/Clikengo/foundationdb-rs?branch=master#af3908b3f7d196739a5eae5f837fdb3ba132de54"
 dependencies = [
  "xml-rs",
 ]
@@ -356,7 +356,7 @@ dependencies = [
 [[package]]
 name = "foundationdb-sys"
 version = "0.5.0"
-source = "git+https://github.com/Clikengo/foundationdb-rs#add16c5f76a55fdd0d0c15753e58b5e4030b4bfb"
+source = "git+https://github.com/Clikengo/foundationdb-rs?branch=master#af3908b3f7d196739a5eae5f837fdb3ba132de54"
 dependencies = [
  "bindgen",
 ]
@@ -581,6 +581,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd179ae861f0c2e53da70d892f5f3029f9594be0c41dc5269cd371691b1dc2f9"
 
 [[package]]
+name = "httpdate"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "494b4d60369511e7dea41cf646832512a94e542f68bb9c49e54518e0f468eb47"
+
+[[package]]
 name = "humantime"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -591,9 +597,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.13.7"
+version = "0.13.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e68a8dd9716185d9e64ea473ea6ef63529252e3e27623295a0378a19665d5eb"
+checksum = "2f3afcfae8af5ad0576a31e768415edb627824129e8e5a29b8bfccb2f234e835"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -603,10 +609,10 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project",
  "socket2",
- "time",
  "tokio",
  "tower-service",
  "tracing",
@@ -719,11 +725,11 @@ checksum = "f2f96b10ec2560088a8e76961b00d47107b3a625fecb76dedb29ee7ccbf98235"
 
 [[package]]
 name = "libloading"
-version = "0.5.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"
+checksum = "2443d8f0478b16759158b2f66d525991a05491138bc05814ef52a250148ef4f9"
 dependencies = [
- "cc",
+ "cfg-if",
  "winapi 0.3.9",
 ]
 
@@ -1524,7 +1530,7 @@ dependencies = [
 [[package]]
 name = "twilight-gateway"
 version = "0.1.0"
-source = "git+https://github.com/twilight-rs/twilight?branch=trunk#05f3f228d53ccf91abbea1507dceaf4fbc660604"
+source = "git+https://github.com/twilight-rs/twilight?branch=trunk#fb7957aca0d845ce07ccef20ca93df8338b425f1"
 dependencies = [
  "async-tungstenite",
  "bitflags",
@@ -1545,8 +1551,8 @@ dependencies = [
 
 [[package]]
 name = "twilight-http"
-version = "0.1.1"
-source = "git+https://github.com/twilight-rs/twilight?branch=trunk#05f3f228d53ccf91abbea1507dceaf4fbc660604"
+version = "0.1.2"
+source = "git+https://github.com/twilight-rs/twilight?branch=trunk#fb7957aca0d845ce07ccef20ca93df8338b425f1"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1564,8 +1570,8 @@ dependencies = [
 
 [[package]]
 name = "twilight-model"
-version = "0.1.1"
-source = "git+https://github.com/twilight-rs/twilight?branch=trunk#05f3f228d53ccf91abbea1507dceaf4fbc660604"
+version = "0.1.2"
+source = "git+https://github.com/twilight-rs/twilight?branch=trunk#fb7957aca0d845ce07ccef20ca93df8338b425f1"
 dependencies = [
  "bitflags",
  "serde",

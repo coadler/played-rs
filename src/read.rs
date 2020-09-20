@@ -1,35 +1,11 @@
+use crate::helpers::bytes_to_date;
+use crate::keys::*;
+use crate::Runner;
+use anyhow::Result;
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::{DateTime, TimeZone, Utc};
-use foundationdb::*;
-use futures::FutureExt;
-use std::convert::TryInto;
-use std::time::Duration;
-
-use anyhow::Result;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let net = std::thread::spawn(|| {
-        foundationdb::boot(|| {
-            std::thread::park();
-        });
-    });
-
-    tokio::time::delay_for(Duration::from_millis(500)).await;
-
-    let db: Database = foundationdb::Database::default().expect("open fdb");
-
-    let res = db
-        .transact_boxed(
-            (),
-            |tx, _| read_exec(tx, b"105484726235607040").boxed(),
-            TransactOption::default(),
-        )
-        .await?;
-    dbg!(res);
-
-    Ok(())
-}
+use foundationdb::{tuple, FdbResult, TransactOption};
+use futures::prelude::*;
 
 #[derive(Debug)]
 pub struct Response {
@@ -44,6 +20,19 @@ pub struct Entry {
     pub dur: u32,
 }
 
+impl Runner {
+    pub async fn read<T: AsRef<str>>(&self, user: T) -> Result<Response> {
+        Ok(self
+            .fdb
+            .transact_boxed(
+                user.as_ref().as_bytes(),
+                |tx, usr| read_exec(tx, usr).boxed(),
+                TransactOption::default(),
+            )
+            .await?)
+    }
+}
+
 async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> FdbResult<Response> {
     let games: Vec<Entry> = t
         .get_range(&fmt_user_range(user.as_ref()), 1, true)
@@ -53,7 +42,7 @@ async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> Fd
             let (_, _, _, game): (Vec<u8>, u16, Vec<u8>, Vec<u8>) = tuple::unpack(v.key()).unwrap();
             Entry {
                 name: String::from_utf8_lossy(&game).to_string(),
-                dur: byteorder::LittleEndian::read_u64(v.value()) as u32,
+                dur: LittleEndian::read_u64(v.value()) as u32,
             }
         })
         .collect();
@@ -75,57 +64,4 @@ async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> Fd
         last_updated,
         games,
     })
-}
-
-fn bytes_to_date(raw: &[u8]) -> DateTime<Utc> {
-    let secs = LittleEndian::read_u64(raw);
-    Utc.timestamp(secs.try_into().unwrap(), 0)
-}
-
-const SUBSPACE_PREFIX: &[u8] = b"played";
-
-enum Subspace {
-    FirstSeen = 1,
-    LastUpdated = 2,
-    Current = 3,
-    UserGame = 4,
-}
-
-fn fmt_first_seen_key(user: &[u8]) -> Vec<u8> {
-    tuple::Subspace::all()
-        .subspace(&SUBSPACE_PREFIX)
-        .subspace(&(Subspace::FirstSeen as u16))
-        .pack(&user)
-}
-
-fn fmt_last_updated_key(user: &[u8]) -> Vec<u8> {
-    tuple::Subspace::all()
-        .subspace(&SUBSPACE_PREFIX)
-        .subspace(&(Subspace::LastUpdated as u16))
-        .pack(&user)
-}
-
-fn fmt_current_game_key(user: &[u8]) -> Vec<u8> {
-    tuple::Subspace::all()
-        .subspace(&SUBSPACE_PREFIX)
-        .subspace(&(Subspace::Current as u16))
-        .pack(&user)
-}
-
-fn fmt_user_game(user: &[u8], game: &[u8]) -> Vec<u8> {
-    tuple::Subspace::all()
-        .subspace(&SUBSPACE_PREFIX)
-        .subspace(&(Subspace::UserGame as u16))
-        .pack(&(user, game))
-}
-
-#[allow(dead_code)]
-fn fmt_user_range<'a>(user: &[u8]) -> RangeOption<'a> {
-    RangeOption::from(
-        tuple::Subspace::all()
-            .subspace(&SUBSPACE_PREFIX)
-            .subspace(&(Subspace::UserGame as u16))
-            .subspace(&user)
-            .range(),
-    )
 }
