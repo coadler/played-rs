@@ -27,7 +27,13 @@ async fn exec(t: &foundationdb::Transaction, pres: &PresenceUpdate) -> FdbResult
 
     let usr = pres.user.key().to_string();
     let usr = usr.as_bytes();
-    let game = pres.game.as_ref().map(|a| a.name.as_bytes()).unwrap_or(b"");
+    let mut game = pres.game.as_ref().map(|a| a.name.as_bytes()).unwrap_or(b"");
+
+    if game == b"Custom Status" {
+        if let Some(cus) = pres.game.as_ref().unwrap().state.as_ref() {
+            game = cus.as_bytes()
+        }
+    }
 
     let first_key = fmt_first_seen_key(usr);
     let last_key = fmt_last_updated_key(usr);

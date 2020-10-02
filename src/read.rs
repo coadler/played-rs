@@ -23,44 +23,61 @@ pub struct Entry {
 
 impl Runner {
     pub async fn read<T: AsRef<str>>(&self, user: T) -> Result<Response> {
+        #[inline]
+        async fn exec<T: AsRef<[u8]>>(
+            t: &foundationdb::Transaction,
+            user: T,
+        ) -> FdbResult<Response> {
+            let mut games: Vec<Entry> = t
+                .get_range(&fmt_user_range(user.as_ref()), 1, true)
+                .await?
+                .into_iter()
+                .map(|v| v.into())
+                .collect::<Vec<Entry>>();
+            games.sort_by(|a, b| b.dur.cmp(&a.dur));
+
+            let first_seen = t
+                .get(&fmt_first_seen_key(user.as_ref()), true)
+                .await?
+                .map(|v| bytes_to_date(&*v))
+                .unwrap_or(Utc.timestamp(0, 0));
+
+            let last_updated = t
+                .get(&fmt_last_updated_key(user.as_ref()), true)
+                .await?
+                .map(|v| bytes_to_date(&*v))
+                .unwrap_or(Utc.timestamp(0, 0));
+
+            Ok(Response {
+                first_seen,
+                last_updated,
+                games,
+            })
+        }
+
         Ok(self
             .fdb
             .transact_boxed(
                 user.as_ref().as_bytes(),
-                |tx, usr| read_exec(tx, usr).boxed(),
+                |tx, usr| exec(tx, usr).boxed(),
                 TransactOption::default(),
             )
             .await?)
     }
-}
 
-#[inline]
-async fn read_exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> FdbResult<Response> {
-    &dbg!(&fmt_user_range(user.as_ref()));
-    let games: Vec<Entry> = t
-        .get_range(&fmt_user_range(user.as_ref()), 1, true)
-        .await?
-        .into_iter()
-        .map(|v| v.into())
-        .collect();
+    pub async fn clear(&self) -> Result<()> {
+        #[inline]
+        async fn exec(t: &foundationdb::Transaction) -> FdbResult<()> {
+            let rg = fmt_current_game_range();
+            t.clear_range(rg.begin.key(), rg.end.key());
+            Ok(())
+        }
 
-    let first_seen = t
-        .get(&fmt_first_seen_key(user.as_ref()), true)
-        .await?
-        .map(|v| bytes_to_date(&*v))
-        .unwrap_or(Utc.timestamp(0, 0));
-
-    let last_updated = t
-        .get(&fmt_last_updated_key(user.as_ref()), true)
-        .await?
-        .map(|v| bytes_to_date(&*v))
-        .unwrap_or(Utc.timestamp(0, 0));
-
-    Ok(Response {
-        first_seen,
-        last_updated,
-        games,
-    })
+        Ok(self
+            .fdb
+            .transact_boxed((), |tx, _| exec(tx).boxed(), TransactOption::default())
+            .await?)
+    }
 }
 
 impl From<FdbValue> for Entry {

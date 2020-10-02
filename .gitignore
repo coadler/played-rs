@@ -1,4 +1,4 @@
 /target
-**/*.rs.bk
-
+.env
 run.sh
+run-prod.sh
