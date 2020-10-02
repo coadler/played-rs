@@ -26,5 +26,12 @@ name = "played-rs"
 path = "src/bin/main.rs"
 
 [[bin]]
-name = "read-data"
+name = "read"
 path = "src/bin/read.rs"
+
+[[bin]]
+name = "clear"
+path = "src/bin/clear.rs"
+
+[profile.release]
+lto = true
