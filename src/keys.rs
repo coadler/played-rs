@@ -9,6 +9,7 @@ enum Subspace {
     LastUpdated = 2,
     Current = 3,
     UserGame = 4,
+    Whitelist = 5,
 }
 
 pub(crate) fn fmt_first_seen_key(user: &[u8]) -> Vec<u8> {
@@ -86,4 +87,11 @@ pub(crate) fn fmt_user_range<'a>(user: &[u8]) -> RangeOption<'static> {
     rg.mode = StreamingMode::WantAll;
 
     rg
+}
+
+pub(crate) fn fmt_whitelist_user(user: &[u8]) -> Vec<u8> {
+    tuple::Subspace::all()
+        .subspace(&SUBSPACE_PREFIX)
+        .subspace(&(Subspace::Whitelist as u16))
+        .pack(&user)
 }

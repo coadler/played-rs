@@ -22,6 +22,51 @@ pub struct Entry {
 }
 
 impl Runner {
+    pub async fn set_whitelist<T: AsRef<str>>(&self, user: T, enable: bool) -> Result<()> {
+        #[inline]
+        async fn exec<T: AsRef<[u8]>>(
+            t: &foundationdb::Transaction,
+            user: T,
+            enable: bool,
+        ) -> FdbResult<()> {
+            if enable {
+                t.set(&fmt_whitelist_user(user.as_ref()), &[]);
+            } else {
+                t.clear(&fmt_whitelist_user(user.as_ref()));
+            }
+
+            Ok(())
+        }
+
+        Ok(self
+            .fdb
+            .transact_boxed(
+                (user.as_ref().as_bytes(), enable),
+                |tx, (usr, enable)| exec(tx, usr, *enable).boxed(),
+                TransactOption::default(),
+            )
+            .await?)
+    }
+    pub async fn read_whitelist<T: AsRef<str>>(&self, user: T) -> Result<bool> {
+        #[inline]
+        async fn exec<T: AsRef<[u8]>>(t: &foundationdb::Transaction, user: T) -> FdbResult<bool> {
+            let whitelisted = t
+                .get(&fmt_whitelist_user(user.as_ref()), true)
+                .await?
+                .is_some();
+            Ok(whitelisted)
+        }
+
+        Ok(self
+            .fdb
+            .transact_boxed(
+                user.as_ref().as_bytes(),
+                |tx, usr| exec(tx, usr).boxed(),
+                TransactOption::default(),
+            )
+            .await?)
+    }
+
     pub async fn read<T: AsRef<str>>(&self, user: T) -> Result<Response> {
         #[inline]
         async fn exec<T: AsRef<[u8]>>(

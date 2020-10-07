@@ -29,6 +29,10 @@ async fn exec(t: &foundationdb::Transaction, pres: &PresenceUpdate) -> FdbResult
     let usr = usr.as_bytes();
     let mut game = pres.game.as_ref().map(|a| a.name.as_bytes()).unwrap_or(b"");
 
+    if t.get(&fmt_whitelist_user(usr), true).await?.is_none() {
+        return Ok(());
+    }
+
     if game == b"Custom Status" {
         if let Some(cus) = pres.game.as_ref().unwrap().state.as_ref() {
             game = cus.as_bytes()
