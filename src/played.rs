@@ -42,9 +42,8 @@ impl Runner {
 
         let scheme = ShardScheme::Auto;
 
-        let cluster = Cluster::builder(&self.token)
+        let cluster = Cluster::builder(&self.token, Intents::GUILD_PRESENCES)
             .shard_scheme(scheme)
-            .intents(Intents::GUILD_PRESENCES)
             .build()
             .await?;
 
